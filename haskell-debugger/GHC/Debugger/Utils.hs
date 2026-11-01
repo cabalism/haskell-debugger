@@ -26,12 +26,25 @@ import qualified Data.Text.IO as T
 import Data.Attoparsec.Text
 
 import Colog.Core as Logger
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import GHC.Clock (getMonotonicTime)
+import Numeric (showFFloat)
 import GHC.Debugger.Interface.Messages
 import GHC.Stack
 
 --------------------------------------------------------------------------------
 -- * Handle utils
 --------------------------------------------------------------------------------
+
+-- | Run an action and report how long it took, through the given logging
+-- function. Used to show users where session setup time goes.
+withTimingLog :: MonadIO m => (String -> m ()) -> String -> m a -> m a
+withTimingLog logMsg what act = do
+  t0 <- liftIO getMonotonicTime
+  r  <- act
+  t1 <- liftIO getMonotonicTime
+  logMsg (what ++ " took " ++ showFFloat (Just 2) (t1 - t0) "s")
+  pure r
 
 silenceEOF :: HasCallStack => LogAction IO T.Text -> Handle -> IO () -> IO ()
 silenceEOF l h m = do

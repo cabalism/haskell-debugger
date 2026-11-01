@@ -57,6 +57,7 @@ import Prettyprinter
 import Prettyprinter.Render.Text
 
 import qualified GHC.Debugger.Monad as Debugger
+import GHC.Debugger.Utils (withTimingLog)
 import GHC (Ghc)
 import GHC.Debugger.Monad (ProjectDebugSpec(ProjectDebugSpec))
 
@@ -116,14 +117,17 @@ hieBiosSetup :: LogAction IO (WithSeverity SessionSetupLog)
 hieBiosSetup logger projectRoot entryFile cradleFile = do
 
   logInfo "Figuring out the right flags to compile the project using hie-bios..."
-  cradle <- hieBiosCradle logger projectRoot entryFile cradleFile & ExceptT
+  cradle <- withTimingLog logInfo "hie-bios: loading the cradle" $
+    hieBiosCradle logger projectRoot entryFile cradleFile & ExceptT
 
   -- GHC is found in PATH (by hie-bios as well).
   logInfo "Checking GHC version against debugger version..."
-  _version <- hieBiosRuntimeGhcVersion cradle
+  _version <- withTimingLog logInfo "hie-bios: checking the GHC version" $
+    hieBiosRuntimeGhcVersion cradle
 
   logInfo "Discovering session flags with hie-bios..."
-  r <- hieBiosFlags cradle projectRoot entryFile     & liftIO
+  r <- withTimingLog logInfo "hie-bios: discovering session flags" $
+    hieBiosFlags cradle projectRoot entryFile     & liftIO
 
   logInfo "Session setup with hie-bios was successful."
   return r

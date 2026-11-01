@@ -239,7 +239,7 @@ breakpointStatusInt = \case
 -- | Find all the internal breakpoints that use the given source-level breakpoint id
 getInternalBreaksOf :: BreakpointId -> Debugger [InternalBreakpointId]
 getInternalBreaksOf bi = do
-  bs <- mkBreakpointOccurrences
+  bs <- getBreakpointOccurrences
   return $
     fromMaybe [] {- still not found after refresh -} $
       lookupBreakpointOccurrences bs bi
@@ -311,8 +311,7 @@ getModuleByPath path = do
 -- Used by 'setBreakpoints' and 'GetBreakpointsAt' requests
 findBreakpoint :: Module {-^ module -} -> Int {-^ line num -} -> Maybe Int {-^ column num -} -> Debugger (Maybe (Int, RealSrcSpan))
 findBreakpoint modl lineNum columnNum = do
-  -- TODO: Cache moduleLineMap?
-  mticks <- makeModuleLineMap modl
+  mticks <- getModuleLineMap modl
   let mbid = do
         ticks <- mticks
         case columnNum of

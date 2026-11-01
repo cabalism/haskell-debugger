@@ -311,6 +311,12 @@ executable hdb
     ghc-options: -threaded
     -- See Note [Custom external interpreter]
     ghc-options: -fkeep-cafs
+    -- Allow tuning the RTS (hdb ... +RTS -s -RTS) and use a larger nursery:
+    -- the GHC API allocates a lot while compiling the debuggee. The nursery is
+    -- per capability, and the debugger modes use one capability per processor
+    -- (set at startup in Main.hs rather than with -N here, so that the
+    -- external interpreter keeps the RTS defaults), so keep it moderate.
+    ghc-options: -rtsopts "-with-rtsopts=-A16m"
 
 test-suite haskell-debugger-test
     import:           warnings, multithreaded_cpp

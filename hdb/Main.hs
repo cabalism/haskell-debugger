@@ -47,7 +47,7 @@ import GHC.Utils.Logger (defaultLogActionWithHandles)
 import Development.Debug.Session.Setup (hieDebugRunner)
 import GHC.Debugger.Debuggee (mkCliInterpreterSettings)
 import GHC.Debugger.Session (initUniqSupplyIO)
-import GHC.Conc (labelThread)
+import GHC.Conc (labelThread, getNumProcessors)
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Exception
@@ -85,6 +85,7 @@ main = handleSigTermTopLevel $ do
 
       -- See Note [UniqueSupply is process global]
       initUniqSupplyIO
+      useAllProcessors
 
       let servConf = DAPServerConf
             { getDebugRunner = hieDebugRunner
@@ -103,6 +104,7 @@ main = handleSigTermTopLevel $ do
 
         -- See Note [UniqueSupply is process global]
         initUniqSupplyIO
+        useAllProcessors
 
         -- See Note [Debuggee working directory and environment] in GHC.Debugger.Run
         case debuggeeCwd of
@@ -281,3 +283,14 @@ mainLogger threshold h = do
     InteractiveLog (IDebuggerLog debuggerLog)    -> logDebuggerLog logGhcLog l threshold debuggerLog
     RunProxyClientLog sev_msg -> defaultLog l threshold sev_msg
     DAPLog dapLog -> logDAPLog logGhcLog l threshold <& dapLog
+
+-- | Use one capability per processor, so that the debuggee's modules can be
+-- compiled in parallel (GHC's parallel upsweep, see 'parMakeCount' in
+-- "GHC.Debugger.Monad"). Done at runtime in the debugger modes only, rather
+-- than with @-with-rtsopts=-N@, so that the external interpreter (also this
+-- executable) keeps the RTS defaults for running the debuggee. An explicit
+-- @+RTS -N<n>@ on the command line is respected.
+useAllProcessors :: IO ()
+useAllProcessors = do
+  caps <- getNumCapabilities
+  when (caps == 1) $ setNumCapabilities =<< getNumProcessors

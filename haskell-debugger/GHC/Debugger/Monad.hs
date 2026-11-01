@@ -73,6 +73,10 @@ import GHC.Plugins (HasCallStack)
 import Data.Bifunctor
 import GHC.Debugger.Monad.Type
 import GHC.Debugger.Monad.Load
+import GHC.Debugger.Utils (withTimingLog)
+import qualified GHC.Runtime.Debugger.Breakpoints as GHC
+import GHC.Unit.Module.Env (lookupModuleEnv, extendModuleEnv)
+import qualified Data.IntMap.Strict as IM
 import GHCi.Message
 import Data.Binary.Get
 import qualified Data.Text as T
@@ -163,6 +167,10 @@ runDebuggerAction l rootDir extraGhcArgs conf loadHomeUnit (Debugger action)
         `GHC.gopt_set` GHC.Opt_IgnoreHpcChanges
         `GHC.gopt_set` GHC.Opt_UseBytecodeRatherThanObjects
         `GHC.gopt_set` GHC.Opt_InsertBreakpoints
+        -- Compile the debuggee's modules in parallel (as with -j), unless the
+        -- user passes their own -j in extraGhcArgs (parsed below, into dflags2).
+        -- Only effective with more than one capability; hdb sets them at startup.
+        & (\d -> d { GHC.parMakeCount = Just GHC.ParMakeNumProcessors })
 
         & interpreterFlags conf.interpreterSettings
         -- Really important to force -dynamic if host is dynamic
@@ -200,7 +208,8 @@ runDebuggerAction l rootDir extraGhcArgs conf loadHomeUnit (Debugger action)
       -- subsequent call to `getLogger` to be affected by a plugin.
       GHC.initializeSessionPlugins
 
-      preservingThreadLabel loadHomeUnit
+      withTimingLog (logSetupInfo l) "Compiling and loading the project" $
+        preservingThreadLabel loadHomeUnit
 
       fixHomeUnitsDynFlagsForIIDecl
 
@@ -212,23 +221,26 @@ runDebuggerAction l rootDir extraGhcArgs conf loadHomeUnit (Debugger action)
             [] -> error "No units"
             (x:xs) -> x NonEmpty.:| xs
 
+      (hdv_uid, loadedBuiltinModNames) <-
+       withTimingLog (logSetupInfo l) "Loading the debugger's built-in modules" $ do
 #ifndef DEBUG_WITH_GHC
-      -- Find haskell-debugger-view in (deps of) home units, or load one from
-      -- in-memory sources.
-      (hdv_uid, loadedBuiltinModNames) <- do
-        preservingThreadLabel $
-          findOrLoadHaskellDebuggerView l buildWays
+        -- Find haskell-debugger-view in (deps of) home units, or load one from
+        -- in-memory sources.
+        (hdv_uid, loadedBuiltinModNames) <- do
+          preservingThreadLabel $
+            findOrLoadHaskellDebuggerView l buildWays
 #else
-      let hdv_uid = hsDebuggerViewInMemoryUnitId
-      let loadedBuiltinModNames = [] :: [ModuleName]
+        let hdv_uid = hsDebuggerViewInMemoryUnitId
+        let loadedBuiltinModNames = [] :: [ModuleName]
 #endif
 
 #if !MIN_VERSION_ghc(9,14,2)
-      loadFFIInspect l buildWays
+        loadFFIInspect l buildWays
 #endif
 
-      -- Loaded later so it can depend on FFIInspect if needed.
-      loadInternal l buildWays
+        -- Loaded later so it can depend on FFIInspect if needed.
+        loadInternal l buildWays
+        pure (hdv_uid, loadedBuiltinModNames)
 
 
       -- See Note [Must explicitly expose module graph units]
@@ -271,7 +283,8 @@ runDebuggerAction l rootDir extraGhcArgs conf loadHomeUnit (Debugger action)
             ]
 
 
-      GHC.setContext imports
+      withTimingLog (logSetupInfo l) "Setting up the interactive scope" $
+        GHC.setContext imports
 
       -- See Note [External interpreter buffering]
       hscInterp <$> GHC.getSession >>= \interp -> runInternal $ do
@@ -665,3 +678,52 @@ as those will contain `Unique`s.
 -}
 --------------------------------------------------------------------------------
 
+
+--------------------------------------------------------------------------------
+-- * Session setup logging and per-session caches
+--------------------------------------------------------------------------------
+
+-- | Log an informational message about session setup. The DAP adapter forwards
+-- 'Logger.Info' debugger logs to the client's console.
+logSetupInfo :: GhcMonad m => LogAction IO DebuggerLog -> String -> m ()
+logSetupInfo l msg = do
+  dflags <- getSessionDynFlags
+  liftIO $ l <& DebuggerLog Logger.Info (LogSDoc dflags (text msg))
+
+-- | 'GHC.makeModuleLineMap', cached per module for the lifetime of the session.
+--
+-- The line map only depends on the module's breakpoint ticks, which are fixed
+-- once the module is loaded (the debugger never reloads modules), while it is
+-- needed for every breakpoint set in the module and for every local step.
+getModuleLineMap :: Module -> Debugger (Maybe GHC.TickArray)
+getModuleLineMap modl = do
+  ref <- asks lineMapCache
+  cache <- liftIO $ readIORef ref
+  case lookupModuleEnv cache modl of
+    Just ticks -> pure (Just ticks)
+    Nothing -> do
+      mticks <- GHC.makeModuleLineMap modl
+      forM_ mticks $ \ticks ->
+        liftIO $ modifyIORef' ref (\c -> extendModuleEnv c modl ticks)
+      pure mticks
+
+-- | 'GHC.mkBreakpointOccurrences', computed once per session.
+--
+-- It folds over the breakpoint ticks of every loaded module, which are fixed
+-- once loading finished, while it is needed for every breakpoint set.
+getBreakpointOccurrences :: Debugger GHC.BreakpointOccurrences
+getBreakpointOccurrences = do
+  ref <- asks breakOccurrencesCache
+  liftIO (readIORef ref) >>= \case
+    Just bs -> pure bs
+    Nothing -> do
+      bs <- GHC.mkBreakpointOccurrences
+      liftIO $ writeIORef ref (Just bs)
+      pure bs
+
+-- | Forget the cached stack traces. Call whenever the debuggee's threads may
+-- have moved: resuming, stepping, evaluating, or starting execution.
+invalidateStopCaches :: Debugger ()
+invalidateStopCaches = do
+  ref <- asks stacktraceCache
+  liftIO $ writeIORef ref IM.empty

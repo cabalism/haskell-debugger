@@ -37,6 +37,8 @@ import GHC.Runtime.Context
 import GHC.Types.Error
 import GHC.Unit.State
 import GHC.Unit.Types
+import GHC.Unit.Module.Env (ModuleEnv, emptyModuleEnv)
+import GHC.Runtime.Debugger.Breakpoints (TickArray, BreakpointOccurrences)
 import qualified GHC.Utils.Logger as GHC
 import GHC.Utils.Outputable as GHC
 
@@ -135,6 +137,19 @@ data DebuggerState = DebuggerState
 
       , dbgLogger :: LogAction IO DebuggerLog
       -- ^ See Note [Debugger, debuggee, and DAP logs]
+
+      , stacktraceCache :: IORef (IntMap [DbgStackFrame])
+      -- ^ Stack traces of stopped threads, keyed by 'remoteThreadIntRef'.
+      -- Clients request the stack trace, scopes and variables of a stopped
+      -- thread several times per stop; decoding the stack once per stop is
+      -- enough. Cleared whenever threads may move ('invalidateStopCaches').
+
+      , lineMapCache :: IORef (ModuleEnv TickArray)
+      -- ^ Per module 'TickArray' (see 'getModuleLineMap'). Valid for the
+      -- whole session since modules are never reloaded.
+
+      , breakOccurrencesCache :: IORef (Maybe BreakpointOccurrences)
+      -- ^ See 'getBreakpointOccurrences'. Valid for the whole session.
       }
 
 instance GHC.HasLogger Debugger where
@@ -229,6 +244,9 @@ initialDebuggerState l hsDbgViewUid = do
                 <*> liftIO (newIORef emptyCompCache)
                 <*> pure hsDbgViewUid
                 <*> pure l
+                <*> liftIO (newIORef IM.empty)
+                <*> liftIO (newIORef emptyModuleEnv)
+                <*> liftIO (newIORef Nothing)
 
 -- | Fetch the @haskell-debugger-view@ unit-id from the environment.
 -- @Nothing@ means custom debugger views are disabled.

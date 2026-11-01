@@ -47,7 +47,7 @@ resolveResumeStep r = \case
       hug   <- hsc_HUG <$> getSession
       brks  <- readIModBreaks hug ibi & liftIO
       let md = getBreakSourceMod ibi brks
-      ticks <- fromMaybe (error "doLocalStep:getTicks") <$> makeModuleLineMap md
+      ticks <- fromMaybe (error "doLocalStep:getTicks") <$> getModuleLineMap md
       pure $ enclosingTickSpan ticks loc
 
 -- | Wrap around GHC's "odd behavior"?

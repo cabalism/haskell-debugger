@@ -18,6 +18,7 @@ import Data.Function
 import Control.Monad
 import Control.Monad.Reader
 import Data.IORef
+import qualified Data.IntMap.Strict as IM
 import qualified Data.List as L
 
 import GHC
@@ -112,9 +113,25 @@ getThreads = do
 -- * Stack trace
 --------------------------------------------------------------------------------
 
--- | Get the stack frames at the point we're stopped at
+-- | Get the stack frames at the point we're stopped at.
+--
+-- Cached per thread until the debuggee is resumed, stepped, or evaluated into
+-- (see 'invalidateStopCaches'): clients request the stack trace, the scopes and
+-- the variables of each frame separately, and each of those needs the frames.
 getStacktrace :: RemoteThreadId -> Debugger [DbgStackFrame]
 getStacktrace req_tid = do
+  ref <- asks stacktraceCache
+  cache <- liftIO $ readIORef ref
+  case IM.lookup (remoteThreadIntRef req_tid) cache of
+    Just frames -> pure frames
+    Nothing -> do
+      frames <- computeStacktrace req_tid
+      liftIO $ modifyIORef' ref (IM.insert (remoteThreadIntRef req_tid) frames)
+      pure frames
+
+-- | Decode the stack of the given thread. See 'getStacktrace'.
+computeStacktrace :: RemoteThreadId -> Debugger [DbgStackFrame]
+computeStacktrace req_tid = do
 
   tm <- liftIO . readIORef =<< asks threadMap
   let m_f_tid = lookupThreadMap (remoteThreadIntRef req_tid) tm

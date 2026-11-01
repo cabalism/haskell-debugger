@@ -64,7 +64,7 @@ execute = \case
   -- GHC.Debugger.Run
   ------------------------------------------------------------------------------
 
-  DoEval mfid exp_s -> DidEval <$>
+  DoEval mfid exp_s -> invalidateStopCaches >> DidEval <$>
     Run.doEvalCommand mfid exp_s
 
   -- TODO: We shouldn't block waiting for the result of these operations, because that means we can never resume/step two threads simultaneously.
@@ -75,10 +75,10 @@ execute = \case
   -- Even more generally, I think when we read an handleExecResult we should
   -- probably clear the MVar as soon as possible so we can receive as many paused
   -- thread hits as possible and emit thread paused events.
-  DoResume tid step world -> DidResume <$>
+  DoResume tid step world -> invalidateStopCaches >> DidResume <$>
     Run.doResume tid step world
 
-  DebugExecution { entryPoint, entryFile, runArgs, runCwd, runEnv } -> DidExec <$>
+  DebugExecution { entryPoint, entryFile, runArgs, runCwd, runEnv } -> invalidateStopCaches >> DidExec <$>
     Run.debugExecution entryFile entryPoint runArgs runCwd runEnv
 
   -----------------------------------------------------------------------------
