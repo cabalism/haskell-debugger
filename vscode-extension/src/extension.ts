@@ -183,8 +183,10 @@ class GHCDebugAdapterServerDescriptorFactory implements vscode.DebugAdapterDescr
 		const port = await getFreePort();
 		this.logger.appendLine(`[Factory] Launching haskell-debugger on port ${port}`);
 
-		const serverExecutable = vscode.workspace.getConfiguration('haskell-debugger').get<string>('serverExecutable') || 'hdb';
-		this.logger.appendLine(`[Factory] Using server executable: ${serverExecutable}`);
+		const config = vscode.workspace.getConfiguration('haskell-debugger', session.workspaceFolder);
+		const serverExecutable = config.get<string>('serverExecutable') || 'hdb';
+		const verbosity = config.get<number>('verbosity') ?? 2;
+		this.logger.appendLine(`[Factory] Using server executable: ${serverExecutable} (verbosity ${verbosity})`);
 
 		// Start hdb in the workspace folder so that the default working directory
 		// of the debuggee (and the fallback for a missing projectRoot) is
@@ -196,6 +198,7 @@ class GHCDebugAdapterServerDescriptorFactory implements vscode.DebugAdapterDescr
 		const debuggerProcess = cp.spawn(serverExecutable, [
 			'server',
 			'--port', port.toString(),
+			'-v', verbosity.toString(),
 			...(session.configuration.internalInterpreter ? ['--internal-interpreter'] : [])
 		], { cwd: serverCwd });
 

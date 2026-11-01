@@ -67,6 +67,13 @@ rejected and `env` also becomes visible to the debugger.
 To run the debugger, simply hit the green run button.
 See the Features section below for what is currently supported.
 
+The extension has two settings:
+
+| Setting | Description |
+| --- | --- |
+| `haskell-debugger.serverExecutable` | path to the `hdb` executable, or a command found on `PATH` (default `hdb`). |
+| `haskell-debugger.verbosity`        | verbosity of the `hdb` server, from `0` (errors only) to `3` (debug), default `2`. Its output, including how long each step of the session setup took, is shown in the `hdb` output channel. `3` logs every DAP message and is noticeably slower. |
+
 # Related Work
 
 `hdb` is inspired by the original

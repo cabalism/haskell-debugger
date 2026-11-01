@@ -28,7 +28,7 @@ serverParser = HdbDAPServer
      <> short 'p'
      <> metavar "PORT"
      <> help "DAP server port" )
-  <*> verbosityParser Debug
+  <*> verbosityParser Info
   <*> internalInterpreterParser
   <*> disableIpeBacktracesParser
 
@@ -169,7 +169,8 @@ versioner = simpleVersioner $ "Haskell Debugger, version " ++ showVersion P.vers
 -- | Parser for --verbosity 0
 --
 -- The default verbosity differs by mode (#86):
--- - DAP server mode: DEBUG
+-- - DAP server mode: INFO (DEBUG renders and writes every DAP message, which
+--   is noticeably slow; pass -v3 to get it back)
 -- - CLI mode: WARNING
 verbosityParser :: Severity -> Parser Severity
 verbosityParser vdef = option verb

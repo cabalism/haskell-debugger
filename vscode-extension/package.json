@@ -119,6 +119,14 @@
           "type": "string",
           "default": "hdb",
           "description": "Path to the hdb executable. Can be an absolute path or a command available on PATH."
+        },
+        "haskell-debugger.verbosity": {
+          "scope": "machine-overridable",
+          "type": "integer",
+          "enum": [0, 1, 2, 3],
+          "enumDescriptions": ["errors only", "warnings", "info (default)", "debug: every DAP message and debugger log line, noticeably slower"],
+          "default": 2,
+          "description": "Verbosity of the hdb server (passed as -v). Its output is shown in the 'hdb' output channel."
         }
       }
     },

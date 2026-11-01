@@ -8,6 +8,16 @@
   right before the entry point runs. `cwd` requires the external interpreter.
 * Documented the `cradleFile`, `internalInterpreter` and
   `externalInterpreterArgs` launch configuration fields.
+* Faster session setup: the debuggee's modules are compiled in parallel (as
+  with `-j`), and `hdb` is built with `-rtsopts` and a larger allocation area.
+  Session setup now reports how long hie-bios, loading the project and the
+  debugger's built-in modules took.
+* Faster stepping and inspection: stack traces are decoded once per stop
+  instead of once per stack trace, scopes and variables request, and the
+  per-module breakpoint tables are computed once per session.
+* The DAP server now logs at `Info` verbosity by default instead of `Debug`
+  (`-v3` restores the old behaviour). The VSCode extension has a new
+  `haskell-debugger.verbosity` setting.
 
 ## 0.14.0.0 -- 2026-09-17
 
