@@ -341,7 +341,8 @@ test-suite haskell-debugger-test
                       Test.Integration.Evaluate,
                       Test.Integration.StackTrace,
                       Test.Integration.SelfDebug,
-                      Test.Integration.Threads
+                      Test.Integration.Threads,
+                      Test.Integration.CwdEnv
     build-depends:
         base >=4.14,
         async,
